@@ -9,7 +9,7 @@
         <version>4.0.7</version>
         <relativePath/>
     </parent>
-    <groupId>com.stargazing.blibliotech</groupId>
+    <groupId>com.stargazing.bibliotech</groupId>
     <artifactId>bibliotech-microservices</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 
