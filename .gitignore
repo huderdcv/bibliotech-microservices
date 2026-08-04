@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# OWN
+application-local.yml
+application-*-local.yml
+.env
