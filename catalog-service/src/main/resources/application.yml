@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: catalog-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  cloud:
+    config:
+      label: ${CONFIG_BRANCH:main}
+  config:
+    import: "optional:configserver:http://localhost:8071"

@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: eureka-server
+  cloud:
+    config:
+      label: ${CONFIG_BRANCH:main}
+  config:
+    import: "optional:configserver:http://localhost:8071/"
