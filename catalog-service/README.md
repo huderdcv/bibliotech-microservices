@@ -10,6 +10,7 @@ Before starting this service, ensure the following global infrastructure is runn
 
 - **PostgreSQL:** Running via the root Docker Compose file.
 - **Config Server:** Running on port `8071`.
+-  **Eureka Server:** Running on port `8761`.
 
 ### 2. Local Secrets (`application-local.yml`)
 
