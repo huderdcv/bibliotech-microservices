@@ -1,0 +1,189 @@
+package com.stargazing.bibliotech.catalogservice.book;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.stargazing.bibliotech.catalogservice.book.dto.BookResponse;
+import com.stargazing.bibliotech.catalogservice.book.dto.CreateBookRequest;
+import com.stargazing.bibliotech.catalogservice.common.exception.DuplicateResourceException;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.Instant;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@WebMvcTest(controllers = BookController.class)
+class BookControllerTest {
+
+  @Autowired
+  private MockMvc mockMvc;
+
+  @Autowired
+  private ObjectMapper objectMapper;
+
+  @MockitoBean
+  private BookService bookService;
+
+  private static final String BASE_URL = "/api/v1/catalog/books";
+
+  // ===================================================================================
+  //                        HELPERS FOR MOCK DATA
+  // ===================================================================================
+
+  private CreateBookRequest createValidMockRequest() {
+    return new CreateBookRequest(
+      "978-0134685991",
+      "Effective Java",
+      "Joshua Bloch",
+      10,
+      10
+    );
+  }
+
+  private CreateBookRequest createInvalidMockRequest() {
+    // Contains invalid data (blank title, negative copies) to trigger @Valid
+    return new CreateBookRequest(
+      "invalid-isbn",
+      "", // Blank title
+      "Joshua Bloch",
+      -5, // Negative total copies
+      10
+    );
+  }
+
+  private BookResponse createMockResponse() {
+    return new BookResponse(
+      1L,
+      "978-0134685991",
+      "Effective Java",
+      "Joshua Bloch",
+      10,
+      10,
+      Instant.now(),
+      Instant.now()
+    );
+  }
+
+  // ===================================================================================
+  //                        TESTS (LOGIC & VALIDATIONS)
+  // ===================================================================================
+
+  @Nested
+  @DisplayName("Method: createBook()")
+  class CreateBookTests {
+
+    @Nested
+    @DisplayName("Happy Paths (Success Scenarios)")
+    class HappyPathsTests {
+
+      @Test
+      @DisplayName("Should return 201 Created, build correct Location header, and serialize exact response body")
+      void shouldSuccessfullyCreateBookWithHeadersAndBody() throws Exception {
+        // GIVEN
+        CreateBookRequest request = createValidMockRequest();
+        BookResponse mockResponse = createMockResponse();
+
+        given(bookService.createBook(any(CreateBookRequest.class))).willReturn(mockResponse);
+
+        // WHEN & THEN
+        mockMvc.perform(post(BASE_URL)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isCreated())
+          .andExpect(header().string("Location", org.hamcrest.Matchers.endsWith("/api/v1/catalog/books/1")))
+          .andExpect(jsonPath("$.id").value(1L))
+          .andExpect(jsonPath("$.isbn").value("978-0134685991"))
+          .andExpect(jsonPath("$.title").value("Effective Java"))
+          .andExpect(jsonPath("$.author").value("Joshua Bloch"))
+          .andExpect(jsonPath("$.totalCopies").value(10))
+          .andExpect(jsonPath("$.availableCopies").value(10))
+          .andExpect(jsonPath("$.createdAt").exists())
+          .andExpect(jsonPath("$.updatedAt").exists());
+
+        then(bookService).should().createBook(any(CreateBookRequest.class));
+      }
+    }
+
+    @Nested
+    @DisplayName("Payload Validation Scenarios (@Valid)")
+    class PayloadValidationTests {
+
+      @Test
+      @DisplayName("Should return 400 Bad Request when JSON fields violate constraints")
+      void shouldReturnBadRequestWhenJsonFieldsAreInvalid() throws Exception {
+        // GIVEN
+        CreateBookRequest invalidRequest = createInvalidMockRequest();
+
+        // WHEN & THEN
+        mockMvc.perform(post(BASE_URL)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(invalidRequest)))
+          .andExpect(status().isBadRequest());
+
+        // Verify the service layer was protected and never called
+        then(bookService).shouldHaveNoInteractions();
+      }
+
+      @Test
+      @DisplayName("Should return 400 Bad Request when request body is entirely missing")
+      void shouldReturnBadRequestWhenRequestBodyIsMissing() throws Exception {
+        // GIVEN a request with no content
+
+        // WHEN & THEN
+        mockMvc.perform(post(BASE_URL)
+            .contentType(MediaType.APPLICATION_JSON))
+          .andExpect(status().isBadRequest());
+
+        then(bookService).shouldHaveNoInteractions();
+      }
+    }
+
+    @Nested
+    @DisplayName("Exception Mapping (Global Exception Handler Integration)")
+    class ExceptionMappingTests {
+
+      @Test
+      @DisplayName("Should map DuplicateResourceException to 409 Conflict")
+      void shouldMapDuplicateResourceExceptionToConflict() throws Exception {
+        // GIVEN
+        CreateBookRequest request = createValidMockRequest();
+
+        given(bookService.createBook(any(CreateBookRequest.class)))
+          .willThrow(new DuplicateResourceException("A book with ISBN '978-0134685991' already exists"));
+
+        // WHEN & THEN
+        mockMvc.perform(post(BASE_URL)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isConflict());
+      }
+
+      @Test
+      @DisplayName("Should map IllegalArgumentException to 400 Bad Request")
+      void shouldMapIllegalArgumentExceptionToBadRequest() throws Exception {
+        // GIVEN
+        CreateBookRequest request = createValidMockRequest();
+
+        given(bookService.createBook(any(CreateBookRequest.class)))
+          .willThrow(new IllegalArgumentException("Available copies cannot be greater than total copies"));
+
+        // WHEN & THEN
+        mockMvc.perform(post(BASE_URL)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isBadRequest());
+      }
+    }
+  }
+}
