@@ -14,4 +14,7 @@ public interface BookService {
   BookResponse findOneByIsbn(String isbn);
 
   BookResponse reserveOne(String isbn);
+
+  BookResponse returnOne(String isbn);
+
 }
