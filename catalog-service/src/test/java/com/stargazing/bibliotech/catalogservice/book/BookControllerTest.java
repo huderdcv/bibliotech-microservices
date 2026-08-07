@@ -410,4 +410,82 @@ class BookControllerTest {
       }
     }
   }
+
+  @Nested
+  @DisplayName("Method: returnOne()")
+  class ReturnOneTests {
+
+    @Nested
+    @DisplayName("Happy Paths (Success Scenarios)")
+    class HappyPathsTests {
+
+      @Test
+      @DisplayName("Should return 200 OK and serialize updated book response when return succeeds")
+      void shouldSuccessfullyReturnBookAndReturnUpdatedDetails() throws Exception {
+        // GIVEN
+        String isbn = "978-0134685991";
+        BookResponse mockResponse = createMockResponse();
+
+        given(bookService.returnOne(isbn)).willReturn(mockResponse);
+
+        // WHEN & THEN
+        mockMvc.perform(post(BASE_URL + "/{isbn}/return", isbn)
+            .contentType(MediaType.APPLICATION_JSON))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.id").value(1L))
+          .andExpect(jsonPath("$.isbn").value(isbn))
+          .andExpect(jsonPath("$.title").value("Effective Java"))
+          .andExpect(jsonPath("$.author").value("Joshua Bloch"))
+          .andExpect(jsonPath("$.totalCopies").value(10))
+          .andExpect(jsonPath("$.availableCopies").value(10))
+          .andExpect(jsonPath("$.createdAt").exists())
+          .andExpect(jsonPath("$.updatedAt").exists());
+
+        then(bookService).should().returnOne(isbn);
+      }
+    }
+
+    @Nested
+    @DisplayName("Exception Mapping (Global Exception Handler Integration)")
+    class ExceptionMappingTests {
+
+      @Test
+      @DisplayName("Should map ResourceNotFoundException to 404 Not Found")
+      void shouldMapResourceNotFoundExceptionToNotFound() throws Exception {
+        // GIVEN
+        String isbn = "978-0134685991";
+        String expectedErrorMessage = "Book with ISBN: " + isbn + " not found";
+
+        given(bookService.returnOne(isbn))
+          .willThrow(new ResourceNotFoundException(expectedErrorMessage));
+
+        // WHEN & THEN
+        mockMvc.perform(post(BASE_URL + "/{isbn}/return", isbn)
+            .contentType(MediaType.APPLICATION_JSON))
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.detail").value(expectedErrorMessage));
+
+        then(bookService).should().returnOne(isbn);
+      }
+
+      @Test
+      @DisplayName("Should map IllegalStateException (Over-Capacity) to 400 Bad Request")
+      void shouldMapOverCapacityExceptionToBadRequest() throws Exception {
+        // GIVEN
+        String isbn = "978-0134685991";
+        String expectedErrorMessage = "Cannot return book. All physical copies are already in the inventory";
+
+        given(bookService.returnOne(isbn))
+          .willThrow(new IllegalStateException(expectedErrorMessage));
+
+        // WHEN & THEN
+        mockMvc.perform(post(BASE_URL + "/{isbn}/return", isbn)
+            .contentType(MediaType.APPLICATION_JSON))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.detail").value(expectedErrorMessage));
+
+        then(bookService).should().returnOne(isbn);
+      }
+    }
+  }
 }

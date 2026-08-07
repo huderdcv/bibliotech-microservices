@@ -432,4 +432,83 @@ class BookServiceImplTest {
       }
     }
   }
+
+  @Nested
+  @DisplayName("Method: returnOne()")
+  class ReturnOneTests {
+
+    @Nested
+    @DisplayName("Happy Paths (Success Scenarios)")
+    class HappyPaths {
+
+      @Test
+      @DisplayName("Should successfully return a book and increment available copies by 1")
+      void shouldReturnBookSuccessfullyWhenCapacityAllows() {
+        // GIVEN
+        String isbn = "978-0132350884";
+        Book foundBook = createMockBook(isbn, 10, 9); // 10 total, 9 available
+        BookResponse expectedResponse = createMockResponse(1L, isbn, 10, 10); // Expect 10 after return
+
+        given(bookRepository.findByIsbn(isbn)).willReturn(Optional.of(foundBook));
+        given(bookMapper.toResponse(foundBook)).willReturn(expectedResponse);
+
+        // WHEN
+        BookResponse response = bookService.returnOne(isbn);
+
+        // THEN
+        assertThat(response).isNotNull();
+        // Crucial verification: Check that the entity's state was mutated correctly
+        assertThat(foundBook.getAvailableCopies()).isEqualTo(10);
+
+        // Verify interactions
+        then(bookRepository).should(times(1)).findByIsbn(isbn);
+        then(bookMapper).should(times(1)).toResponse(foundBook);
+      }
+    }
+
+    @Nested
+    @DisplayName("Error Paths (Business Rule Validation Failures)")
+    class ErrorPaths {
+
+      @Test
+      @DisplayName("Should throw ResourceNotFoundException when no book matches the provided ISBN")
+      void shouldThrowResourceNotFoundExceptionWhenIsbnDoesNotExist() {
+        // GIVEN
+        String isbn = "978-0132350884";
+
+        given(bookRepository.findByIsbn(isbn)).willReturn(Optional.empty());
+
+        // WHEN & THEN
+        assertThatThrownBy(() -> bookService.returnOne(isbn))
+          .isInstanceOf(ResourceNotFoundException.class)
+          .hasMessage("Book with ISBN: " + isbn + " not found");
+
+        // Verify repository was checked but mapper was never called
+        then(bookRepository).should(times(1)).findByIsbn(isbn);
+        then(bookMapper).shouldHaveNoInteractions();
+      }
+
+      @Test
+      @DisplayName("Should throw exception when available copies equal total copies (Inventory Full)")
+      void shouldThrowExceptionWhenInventoryIsFull() {
+        // GIVEN
+        String isbn = "978-0132350884";
+        Book foundBook = createMockBook(isbn, 10, 10); // 10 available, 10 total (full capacity)
+
+        given(bookRepository.findByIsbn(isbn)).willReturn(Optional.of(foundBook));
+
+        // WHEN & THEN
+        assertThatThrownBy(() -> bookService.returnOne(isbn))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("Cannot return book. All physical copies are already in the inventory");
+
+        // Verify the available copies state was protected and NOT incremented to 11
+        assertThat(foundBook.getAvailableCopies()).isEqualTo(10);
+
+        // Verify mapper was never called (fail-fast)
+        then(bookRepository).should(times(1)).findByIsbn(isbn);
+        then(bookMapper).shouldHaveNoInteractions();
+      }
+    }
+  }
 }
