@@ -7,17 +7,24 @@ import com.stargazing.bibliotech.catalogservice.common.exception.DuplicateResour
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.data.domain.*;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.times;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -73,6 +80,14 @@ class BookControllerTest {
       Instant.now(),
       Instant.now()
     );
+  }
+
+  private Page<BookResponse> createMockBookPage() {
+    return new PageImpl<>(List.of(createMockResponse()), PageRequest.of(0, 10), 1);
+  }
+
+  private Page<BookResponse> createEmptyBookPage() {
+    return new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
   }
 
   // ===================================================================================
@@ -184,6 +199,77 @@ class BookControllerTest {
             .content(objectMapper.writeValueAsString(request)))
           .andExpect(status().isBadRequest());
       }
+    }
+  }
+
+  @Nested
+  @DisplayName("Method: findAllBooks()")
+  class FindAllBooksTests {
+
+    @Test
+    @DisplayName("Should retrieve a paginated list of books using default parameters (200 OK)")
+    void shouldRetrieveBooksWithDefaultPagination() throws Exception {
+      // GIVEN
+      given(bookService.findAllBooks(any(Pageable.class))).willReturn(createMockBookPage());
+
+      // WHEN & THEN
+      mockMvc.perform(get(BASE_URL)
+          .contentType(MediaType.APPLICATION_JSON))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content").exists()) // Adjust JSON path based on your exact PageResponse fields
+        .andExpect(jsonPath("$.content").isArray());
+
+      // VERIFY CAPTOR
+      ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+      then(bookService).should(times(1)).findAllBooks(pageableCaptor.capture());
+
+      Pageable capturedPageable = pageableCaptor.getValue();
+      assertThat(capturedPageable.getPageNumber()).isZero();
+      assertThat(capturedPageable.getPageSize()).isEqualTo(10);
+      assertThat(capturedPageable.getSort().getOrderFor("title")).isNotNull();
+      assertThat(capturedPageable.getSort().getOrderFor("title").getDirection()).isEqualTo(Sort.Direction.ASC);
+    }
+
+    @Test
+    @DisplayName("Should retrieve a paginated list of books using custom client parameters (200 OK)")
+    void shouldRetrieveBooksWithCustomPagination() throws Exception {
+      // GIVEN
+      given(bookService.findAllBooks(any(Pageable.class))).willReturn(createMockBookPage());
+
+      // WHEN & THEN
+      mockMvc.perform(get(BASE_URL)
+          .param("page", "2")
+          .param("size", "5")
+          .param("sort", "author,desc")
+          .contentType(MediaType.APPLICATION_JSON))
+        .andExpect(status().isOk());
+
+      // VERIFY CAPTOR
+      ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+      then(bookService).should(times(1)).findAllBooks(pageableCaptor.capture());
+
+      Pageable capturedPageable = pageableCaptor.getValue();
+      assertThat(capturedPageable.getPageNumber()).isEqualTo(2);
+      assertThat(capturedPageable.getPageSize()).isEqualTo(5);
+      assertThat(capturedPageable.getSort().getOrderFor("author")).isNotNull();
+      assertThat(capturedPageable.getSort().getOrderFor("author").getDirection()).isEqualTo(Sort.Direction.DESC);
+    }
+
+    @Test
+    @DisplayName("Should return 200 OK with empty array when the catalog is empty")
+    void shouldReturnEmptyListWhenCatalogIsEmpty() throws Exception {
+      // GIVEN
+      given(bookService.findAllBooks(any(Pageable.class))).willReturn(createEmptyBookPage());
+
+      // WHEN & THEN
+      mockMvc.perform(get(BASE_URL)
+          .contentType(MediaType.APPLICATION_JSON))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content").isEmpty()) // Or '$.content' depending on your PageResponse
+        .andExpect(jsonPath("$.totalElements").value(0))
+        .andExpect(jsonPath("$.totalPages").value(0));
+
+      then(bookService).should(times(1)).findAllBooks(any(Pageable.class));
     }
   }
 }

@@ -13,8 +13,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -213,6 +219,77 @@ class BookServiceImplTest {
         assertThat(response.totalCopies()).isZero();
         assertThat(response.availableCopies()).isZero();
         then(bookRepository).should(times(1)).save(mappedBook);
+      }
+    }
+  }
+
+  @Nested
+  @DisplayName("Method: findAllBooks()")
+  class FindAllBooksTests {
+
+    @Nested
+    @DisplayName("Happy Paths (Success Scenarios)")
+    class HappyPaths {
+
+      @Test
+      @DisplayName("Should successfully return a populated page of books when data exists")
+      void shouldReturnPopulatedPageWhenDataExists() {
+        // GIVEN
+        Pageable pageable = PageRequest.of(0, 10);
+
+        Book book1 = createMockBook("978-0132350884", 10, 5);
+        Book book2 = createMockBook("978-0134685991", 5, 2);
+        List<Book> bookList = List.of(book1, book2);
+        Page<Book> mockEntityPage = new PageImpl<>(bookList, pageable, bookList.size());
+
+        BookResponse response1 = createMockResponse(1L, "978-0132350884", 10, 5);
+        BookResponse response2 = createMockResponse(2L, "978-0134685991", 5, 2);
+
+        given(bookRepository.findAll(pageable)).willReturn(mockEntityPage);
+        given(bookMapper.toResponse(book1)).willReturn(response1);
+        given(bookMapper.toResponse(book2)).willReturn(response2);
+
+        // WHEN
+        Page<BookResponse> resultPage = bookService.findAllBooks(pageable);
+
+        // THEN
+        assertThat(resultPage).isNotNull();
+        assertThat(resultPage.getContent()).hasSize(2);
+        assertThat(resultPage.getTotalElements()).isEqualTo(2);
+        assertThat(resultPage.getContent()).containsExactly(response1, response2);
+
+        // Verify interactions
+        then(bookRepository).should(times(1)).findAll(pageable);
+        then(bookMapper).should(times(1)).toResponse(book1);
+        then(bookMapper).should(times(1)).toResponse(book2);
+      }
+    }
+
+    @Nested
+    @DisplayName("Edge Cases & Empty States")
+    class EmptyStates {
+
+      @Test
+      @DisplayName("Should return an empty page when no books exist in the database")
+      void shouldReturnEmptyPageWhenDatabaseIsEmpty() {
+        // GIVEN
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<Book> emptyEntityPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+        given(bookRepository.findAll(pageable)).willReturn(emptyEntityPage);
+
+        // WHEN
+        Page<BookResponse> resultPage = bookService.findAllBooks(pageable);
+
+        // THEN
+        assertThat(resultPage).isNotNull();
+        assertThat(resultPage.isEmpty()).isTrue();
+        assertThat(resultPage.getContent()).isEmpty();
+        assertThat(resultPage.getTotalElements()).isZero();
+
+        // Verify interactions
+        then(bookRepository).should(times(1)).findAll(pageable);
+        then(bookMapper).shouldHaveNoInteractions(); // toResponse should never be called
       }
     }
   }
