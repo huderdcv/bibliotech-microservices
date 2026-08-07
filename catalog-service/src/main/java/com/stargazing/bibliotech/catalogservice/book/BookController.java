@@ -124,4 +124,72 @@ public class BookController {
 
     return ResponseEntity.ok(bookResponse);
   }
+
+  //-- RESERVE ONE BOOK
+  @Operation(
+    summary = "Reserve a single copy of a book",
+    description = "Decrements the available copies of a specific book by 1. Fails if the book is out of stock."
+  )
+  @ApiResponses(value = {
+    @ApiResponse(
+      responseCode = "200",
+      description = "Successfully reserved the book",
+      content = @Content(schema = @Schema(implementation = BookResponse.class))
+    ),
+    @ApiResponse(
+      responseCode = "400",
+      description = "Bad Request - The book is currently out of stock",
+      content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+    ),
+    @ApiResponse(
+      responseCode = "404",
+      description = "Not Found - No book exists with the provided ISBN",
+      content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+    )
+  })
+  @PostMapping("/{isbn}/reserve")
+  public ResponseEntity<BookResponse> reserveOne(
+    @Parameter(description = "The unique ISBN of the book to reserve", example = "978-0134685991")
+    @PathVariable
+    String isbn
+  ) {
+
+    BookResponse bookResponse = bookService.reserveOne(isbn);
+
+    return ResponseEntity.ok(bookResponse);
+  }
+
+  //-- RETURN ONE BOOK
+  @Operation(
+    summary = "Return a single copy of a book",
+    description = "Increments the available copies of a specific book by 1. Fails if all physical copies are already accounted for in the inventory."
+  )
+  @ApiResponses(value = {
+    @ApiResponse(
+      responseCode = "200",
+      description = "Successfully returned the book",
+      content = @Content(schema = @Schema(implementation = BookResponse.class))
+    ),
+    @ApiResponse(
+      responseCode = "400",
+      description = "Bad Request - All physical copies are already in the inventory",
+      content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+    ),
+    @ApiResponse(
+      responseCode = "404",
+      description = "Not Found - No book exists with the provided ISBN",
+      content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+    )
+  })
+  @PostMapping("/{isbn}/return")
+  public ResponseEntity<BookResponse> returnOne(
+    @Parameter(description = "The unique ISBN of the book to return", example = "978-0134685991")
+    @PathVariable
+    String isbn
+  ) {
+
+    BookResponse bookResponse = bookService.returnOne(isbn);
+
+    return ResponseEntity.ok(bookResponse);
+  }
 }
