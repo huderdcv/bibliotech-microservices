@@ -6,6 +6,7 @@ import com.stargazing.bibliotech.catalogservice.book.dto.BookResponse;
 import com.stargazing.bibliotech.catalogservice.book.dto.CreateBookRequest;
 import com.stargazing.bibliotech.catalogservice.book.mapper.BookMapper;
 import com.stargazing.bibliotech.catalogservice.common.exception.DuplicateResourceException;
+import com.stargazing.bibliotech.catalogservice.common.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -290,6 +292,64 @@ class BookServiceImplTest {
         // Verify interactions
         then(bookRepository).should(times(1)).findAll(pageable);
         then(bookMapper).shouldHaveNoInteractions(); // toResponse should never be called
+      }
+    }
+  }
+
+  @Nested
+  @DisplayName("Method: findOneByIsbn()")
+  class FindOneByIsbnTests {
+
+    @Nested
+    @DisplayName("Happy Paths (Success Scenarios)")
+    class HappyPaths {
+
+      @Test
+      @DisplayName("Should successfully return a book response when the ISBN exists")
+      void shouldReturnBookResponseSuccessfullyWhenIsbnExists() {
+        // GIVEN
+        String isbn = "978-0132350884";
+        Book foundBook = createMockBook(isbn, 10, 5);
+        foundBook.setId(1L);
+        BookResponse expectedResponse = createMockResponse(1L, isbn, 10, 5);
+
+        given(bookRepository.findByIsbn(isbn)).willReturn(Optional.of(foundBook));
+        given(bookMapper.toResponse(foundBook)).willReturn(expectedResponse);
+
+        // WHEN
+        BookResponse response = bookService.findOneByIsbn(isbn);
+
+        // THEN
+        assertThat(response).isNotNull();
+        assertThat(response.id()).isEqualTo(1L);
+        assertThat(response.isbn()).isEqualTo(isbn);
+
+        // Verify interactions
+        then(bookRepository).should(times(1)).findByIsbn(isbn);
+        then(bookMapper).should(times(1)).toResponse(foundBook);
+      }
+    }
+
+    @Nested
+    @DisplayName("Error Paths (Business Rule Validation Failures)")
+    class ErrorPaths {
+
+      @Test
+      @DisplayName("Should throw ResourceNotFoundException when no book matches the provided ISBN")
+      void shouldThrowResourceNotFoundExceptionWhenIsbnDoesNotExist() {
+        // GIVEN
+        String isbn = "978-0132350884";
+
+        given(bookRepository.findByIsbn(isbn)).willReturn(Optional.empty());
+
+        // WHEN & THEN
+        assertThatThrownBy(() -> bookService.findOneByIsbn(isbn))
+          .isInstanceOf(ResourceNotFoundException.class)
+          .hasMessage("Book with ISBN: " + isbn + " not found");
+
+        // Verify repository was checked but mapper was never called (fail-fast)
+        then(bookRepository).should(times(1)).findByIsbn(isbn);
+        then(bookMapper).shouldHaveNoInteractions();
       }
     }
   }

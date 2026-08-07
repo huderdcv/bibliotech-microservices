@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stargazing.bibliotech.catalogservice.book.dto.BookResponse;
 import com.stargazing.bibliotech.catalogservice.book.dto.CreateBookRequest;
 import com.stargazing.bibliotech.catalogservice.common.exception.DuplicateResourceException;
+import com.stargazing.bibliotech.catalogservice.common.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -270,6 +271,65 @@ class BookControllerTest {
         .andExpect(jsonPath("$.totalPages").value(0));
 
       then(bookService).should(times(1)).findAllBooks(any(Pageable.class));
+    }
+  }
+
+  @Nested
+  @DisplayName("Method: findOneByIsbn()")
+  class FindOneByIsbnTests {
+
+    @Nested
+    @DisplayName("Happy Paths (Success Scenarios)")
+    class HappyPathsTests {
+
+      @Test
+      @DisplayName("Should return 200 OK and serialize exact response body when book is found")
+      void shouldSuccessfullyRetrieveBookByIsbn() throws Exception {
+        // GIVEN
+        String isbn = "978-0134685991";
+        BookResponse mockResponse = createMockResponse();
+
+        given(bookService.findOneByIsbn(isbn)).willReturn(mockResponse);
+
+        // WHEN & THEN
+        mockMvc.perform(get(BASE_URL + "/{isbn}", isbn)
+            .contentType(MediaType.APPLICATION_JSON))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.id").value(1L))
+          .andExpect(jsonPath("$.isbn").value(isbn))
+          .andExpect(jsonPath("$.title").value("Effective Java"))
+          .andExpect(jsonPath("$.author").value("Joshua Bloch"))
+          .andExpect(jsonPath("$.totalCopies").value(10))
+          .andExpect(jsonPath("$.availableCopies").value(10))
+          .andExpect(jsonPath("$.createdAt").exists())
+          .andExpect(jsonPath("$.updatedAt").exists());
+
+        then(bookService).should().findOneByIsbn(isbn);
+      }
+    }
+
+    @Nested
+    @DisplayName("Exception Mapping (Global Exception Handler Integration)")
+    class ExceptionMappingTests {
+
+      @Test
+      @DisplayName("Should map ResourceNotFoundException to 404 Not Found")
+      void shouldMapResourceNotFoundExceptionToNotFound() throws Exception {
+        // GIVEN
+        String isbn = "978-0134685991";
+        String expectedErrorMessage = "Book with ISBN: " + isbn + " not found";
+
+        given(bookService.findOneByIsbn(isbn))
+          .willThrow(new ResourceNotFoundException(expectedErrorMessage));
+
+        // WHEN & THEN
+        mockMvc.perform(get(BASE_URL + "/{isbn}", isbn)
+            .contentType(MediaType.APPLICATION_JSON))
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.detail").value(expectedErrorMessage));
+
+        then(bookService).should().findOneByIsbn(isbn);
+      }
     }
   }
 }
