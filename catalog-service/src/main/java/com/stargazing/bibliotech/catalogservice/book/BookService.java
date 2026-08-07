@@ -12,4 +12,6 @@ public interface BookService {
   Page<BookResponse> findAllBooks(Pageable pageable);
 
   BookResponse findOneByIsbn(String isbn);
+
+  BookResponse reserveOne(String isbn);
 }

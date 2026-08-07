@@ -79,4 +79,26 @@ public class BookServiceImpl implements BookService {
     log.info("Successfully found book with ID: {} and ISBN: {}", book.getId(), book.getIsbn());
     return bookMapper.toResponse(book);
   }
+
+  //-- RESERVE ONE BOOK
+  @Override
+  @Transactional(rollbackFor = Exception.class)
+  public BookResponse reserveOne(String isbn) {
+    log.info("Attempting to reserve one copy of book with ISBN: {}", isbn);
+
+    // 1. Validations
+    Book book = bookRepository.findByIsbn(isbn)
+      .orElseThrow(() -> new ResourceNotFoundException("Book with ISBN: " + isbn + " not found"));
+
+    if (book.getAvailableCopies() <= 0) {
+      throw new IllegalStateException("This book doesn't have available copies");
+    }
+
+    // 2. Modify db
+    book.setAvailableCopies(book.getAvailableCopies() - 1);
+
+    // 3. Map & answer
+    log.info("Successfully reserved book with ISBN: {}. Remaining available copies: {}", isbn, book.getAvailableCopies());
+    return bookMapper.toResponse(book);
+  }
 }
