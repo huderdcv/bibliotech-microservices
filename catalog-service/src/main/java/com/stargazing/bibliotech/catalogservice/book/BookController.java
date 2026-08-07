@@ -4,6 +4,7 @@ import com.stargazing.bibliotech.catalogservice.book.dto.BookResponse;
 import com.stargazing.bibliotech.catalogservice.book.dto.CreateBookRequest;
 import com.stargazing.bibliotech.catalogservice.common.dto.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -93,5 +94,34 @@ public class BookController {
     Page<BookResponse> bookResponsePage = bookService.findAllBooks(pageable);
 
     return ResponseEntity.ok(new PageResponse<>(bookResponsePage));
+  }
+
+  //-- FIND ONE BOOK BY ISBN
+  @Operation(
+    summary = "Retrieve a single book by ISBN",
+    description = "Fetches the details of a specific book using its unique International Standard Book Number (ISBN)."
+  )
+  @ApiResponses(value = {
+    @ApiResponse(
+      responseCode = "200",
+      description = "Successful retrieval of the book",
+      content = @Content(schema = @Schema(implementation = BookResponse.class))
+    ),
+    @ApiResponse(
+      responseCode = "404",
+      description = "Not Found - No book exists with the provided ISBN",
+      content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+    )
+  })
+  @GetMapping("/{isbn}")
+  public ResponseEntity<BookResponse> findOneByIsbn(
+    @Parameter(description = "The unique ISBN of the book to retrieve", example = "978-0134685991")
+    @PathVariable
+    String isbn
+  ) {
+
+    BookResponse bookResponse = bookService.findOneByIsbn(isbn);
+
+    return ResponseEntity.ok(bookResponse);
   }
 }

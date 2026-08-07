@@ -10,4 +10,6 @@ public interface BookService {
   BookResponse createBook(CreateBookRequest request);
 
   Page<BookResponse> findAllBooks(Pageable pageable);
+
+  BookResponse findOneByIsbn(String isbn);
 }

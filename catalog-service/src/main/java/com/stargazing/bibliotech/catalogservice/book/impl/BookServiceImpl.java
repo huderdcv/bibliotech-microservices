@@ -7,6 +7,7 @@ import com.stargazing.bibliotech.catalogservice.book.dto.BookResponse;
 import com.stargazing.bibliotech.catalogservice.book.dto.CreateBookRequest;
 import com.stargazing.bibliotech.catalogservice.book.mapper.BookMapper;
 import com.stargazing.bibliotech.catalogservice.common.exception.DuplicateResourceException;
+import com.stargazing.bibliotech.catalogservice.common.exception.ResourceNotFoundException;
 import io.swagger.v3.oas.annotations.Parameter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +15,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
@@ -28,6 +30,7 @@ public class BookServiceImpl implements BookService {
 
   //-- CREATE A BOOK
   @Override
+  @Transactional(rollbackFor = Exception.class)
   public BookResponse createBook(CreateBookRequest request) {
     log.info("Attempting to create book with ISBN: {}", request.isbn());
 
@@ -52,12 +55,28 @@ public class BookServiceImpl implements BookService {
 
   //-- FIND ALL BOOKS
   @Override
-  public Page<BookResponse> findAllBooks(
-    @Parameter
-    @PageableDefault(page = 0, size = 10)
-    Pageable pageable
-  ) {
+  @Transactional(readOnly = true)
+  public Page<BookResponse> findAllBooks(Pageable pageable) {
+    log.info("Fetching page of books. Page number: {}, Page size: {}", pageable.getPageNumber(), pageable.getPageSize());
+
     Page<Book> bookEntityPage = bookRepository.findAll(pageable);
+
+    log.info("Successfully retrieved {} books from the database", bookEntityPage.getNumberOfElements());
     return bookEntityPage.map(bookMapper::toResponse);
+  }
+
+  //-- FIND BY ISBN
+  @Override
+  @Transactional(readOnly = true)
+  public BookResponse findOneByIsbn(String isbn) {
+    log.info("Attempting to find book with ISBN: {}", isbn);
+
+    // 1. Validations
+    Book book = bookRepository.findByIsbn(isbn)
+      .orElseThrow(() -> new ResourceNotFoundException("Book with ISBN: " + isbn + " not found"));
+
+    // 2. Map & answer
+    log.info("Successfully found book with ID: {} and ISBN: {}", book.getId(), book.getIsbn());
+    return bookMapper.toResponse(book);
   }
 }
