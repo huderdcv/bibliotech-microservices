@@ -1,4 +1,4 @@
-package com.stargazing.bibliotech.catalogservice.common.entities;
+package com.stargazing.bibliotech.catalogservice.common.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.EntityListeners;

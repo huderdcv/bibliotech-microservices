@@ -7,8 +7,12 @@ import com.stargazing.bibliotech.catalogservice.book.dto.BookResponse;
 import com.stargazing.bibliotech.catalogservice.book.dto.CreateBookRequest;
 import com.stargazing.bibliotech.catalogservice.book.mapper.BookMapper;
 import com.stargazing.bibliotech.catalogservice.common.exception.DuplicateResourceException;
+import io.swagger.v3.oas.annotations.Parameter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -21,6 +25,8 @@ public class BookServiceImpl implements BookService {
   private final BookMapper bookMapper;
 
   //- METHODS
+
+  //-- CREATE A BOOK
   @Override
   public BookResponse createBook(CreateBookRequest request) {
     log.info("Attempting to create book with ISBN: {}", request.isbn());
@@ -42,5 +48,16 @@ public class BookServiceImpl implements BookService {
     // 3. Answer
     log.info("Book successfully created with ID: {} and ISBN: {}", savedBook.getId(), savedBook.getIsbn());
     return bookMapper.toResponse(savedBook);
+  }
+
+  //-- FIND ALL BOOKS
+  @Override
+  public Page<BookResponse> findAllBooks(
+    @Parameter
+    @PageableDefault(page = 0, size = 10)
+    Pageable pageable
+  ) {
+    Page<Book> bookEntityPage = bookRepository.findAll(pageable);
+    return bookEntityPage.map(bookMapper::toResponse);
   }
 }

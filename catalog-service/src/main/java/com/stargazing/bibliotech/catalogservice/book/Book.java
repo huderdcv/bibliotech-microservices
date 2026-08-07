@@ -1,6 +1,6 @@
 package com.stargazing.bibliotech.catalogservice.book;
 
-import com.stargazing.bibliotech.catalogservice.common.entities.BaseEntity;
+import com.stargazing.bibliotech.catalogservice.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
