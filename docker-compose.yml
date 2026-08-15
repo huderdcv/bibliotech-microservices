@@ -18,6 +18,24 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  postgres-loan-db:
+    image: postgres:15-alpine
+    container_name: bibliotech-loan-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_LOAN_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_LOAN_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_LOAN_DB}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-loan-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres-data:
+  postgres-loan-data:
