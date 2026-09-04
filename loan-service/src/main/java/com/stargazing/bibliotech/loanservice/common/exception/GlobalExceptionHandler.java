@@ -1,6 +1,7 @@
 package com.stargazing.bibliotech.loanservice.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 //import org.springframework.dao.DataIntegrityViolationException;
 //import org.springframework.data.core.PropertyReferenceException;
@@ -14,13 +15,17 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
+
+  private final Clock clock;
 
   // ===================================================================================
   // 1. CUSTOM BUSINESS EXCEPTIONS
@@ -41,6 +46,28 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     return buildProblemDetail(
       HttpStatus.CONFLICT,
       "Duplicate resource",
+      exception.getMessage()
+    );
+  }
+
+  @ExceptionHandler(ServiceUnavailableException.class)
+  public ProblemDetail handleServiceUnavailable(ServiceUnavailableException exception, HttpServletRequest request) {
+    log.error("Downstream service failure on path {}: {}", request.getRequestURI(), exception.getMessage());
+
+    return buildProblemDetail(
+      HttpStatus.SERVICE_UNAVAILABLE,
+      "Service unavailable",
+      exception.getMessage()
+    );
+  }
+
+  @ExceptionHandler(BookUnavailableException.class)
+  public ProblemDetail handleBookUnavailable(BookUnavailableException exception, HttpServletRequest request) {
+    log.warn("Book unavailable on path {}: {}", request.getRequestURI(), exception.getMessage());
+
+    return buildProblemDetail(
+      HttpStatus.CONFLICT,
+      "Book Unavailable",
       exception.getMessage()
     );
   }
@@ -178,7 +205,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   private ProblemDetail buildProblemDetail(HttpStatus status, String title, String detail) {
     ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
     problem.setTitle(title);
-    problem.setProperty("timestamp", Instant.now());
+    problem.setProperty("timestamp", Instant.now(clock));
     return problem;
   }
 }
