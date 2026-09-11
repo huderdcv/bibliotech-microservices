@@ -1,5 +1,6 @@
 package com.stargazing.bibliotech.loanservice.loan;
 
+import com.stargazing.bibliotech.loanservice.common.dto.PageResponse;
 import com.stargazing.bibliotech.loanservice.loan.dto.BorrowBookRequest;
 import com.stargazing.bibliotech.loanservice.loan.dto.LoanResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +13,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -102,5 +108,40 @@ public class LoanController {
     LoanResponse loanResponse = loanService.returnBook(id);
 
     return ResponseEntity.ok(loanResponse);
+  }
+
+  //-- FETCH ALL LOANS BY MEMBER ID
+  @Operation(
+    summary = "Fetch all loans for a specific member",
+    description = "Retrieves a paginated list of all borrowing transactions (ACTIVE and RETURNED) associated with a library patron. Returns an empty page if the member has no history."
+  )
+  @ApiResponses(value = {
+    @ApiResponse(
+      responseCode = "200",
+      description = "Successfully retrieved the paginated list of loans",
+      content = @Content(schema = @Schema(implementation = PageResponse.class))
+    )
+  })
+  @GetMapping("/member/{memberId}")
+  public ResponseEntity<PageResponse<LoanResponse>> findAllLoansByMemberId(
+    @Parameter(description = "The unique ID of the library member", example = "user-12345")
+    @PathVariable("memberId")
+    String memberId,
+
+    @ParameterObject
+    @PageableDefault(
+      page = 0,
+      size = 10,
+      sort = "createdAt",
+      direction = Sort.Direction.ASC
+    )
+    Pageable pageable
+  ) {
+
+    // 1. Fetch the Spring Data Page from the service layer
+    Page<LoanResponse> loanPage = loanService.findAllLoansByMemberId(memberId, pageable);
+
+    // 2. Wrap it in your custom PageResponse DTO and return 200 OK
+    return ResponseEntity.ok(new PageResponse<>(loanPage));
   }
 }
