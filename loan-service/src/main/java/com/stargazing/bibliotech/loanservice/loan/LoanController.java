@@ -3,6 +3,7 @@ package com.stargazing.bibliotech.loanservice.loan;
 import com.stargazing.bibliotech.loanservice.loan.dto.BorrowBookRequest;
 import com.stargazing.bibliotech.loanservice.loan.dto.LoanResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -13,10 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
@@ -71,5 +69,38 @@ public class LoanController {
       .toUri();
 
     return ResponseEntity.created(location).body(loanResponse);
+  }
+
+  //-- RETURN A BOOK
+  @Operation(
+    summary = "Return a borrowed book",
+    description = "Processes the return of a book, updating the loan status to RETURNED and automatically incrementing the physical book inventory in the catalog."
+  )
+  @ApiResponses(value = {
+    @ApiResponse(
+      responseCode = "200",
+      description = "Loan returned successfully",
+      content = @Content(schema = @Schema(implementation = LoanResponse.class))
+    ),
+    @ApiResponse(
+      responseCode = "400",
+      description = "Bad Request - The loan is already returned, in conflict, or the Catalog Service rejected the return",
+      content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+    ),
+    @ApiResponse(
+      responseCode = "404",
+      description = "Not Found - The provided Loan ID does not exist in the database",
+      content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+    )
+  })
+  @PutMapping("/{id}/return")
+  public ResponseEntity<LoanResponse> returnBook(
+    @Parameter(description = "The unique ID of the loan to return", example = "5432")
+    @PathVariable("id")
+    Long id
+  ) {
+    LoanResponse loanResponse = loanService.returnBook(id);
+
+    return ResponseEntity.ok(loanResponse);
   }
 }
