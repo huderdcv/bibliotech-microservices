@@ -1,5 +1,9 @@
 package com.stargazing.bibliotech.loanservice.common.exception;
 
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.CatalogBadRequestException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.CatalogConflictException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.CatalogNotFoundException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.ServiceUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -61,13 +65,35 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     );
   }
 
-  @ExceptionHandler(BookUnavailableException.class)
-  public ProblemDetail handleBookUnavailable(BookUnavailableException exception, HttpServletRequest request) {
-    log.warn("Book unavailable on path {}: {}", request.getRequestURI(), exception.getMessage());
+  @ExceptionHandler(CatalogNotFoundException.class)
+  public ProblemDetail handleCatalogNotFound(CatalogNotFoundException exception, HttpServletRequest request) {
+    log.warn("Catalog resource not found on path {}: {}", request.getRequestURI(), exception.getMessage());
+
+    return buildProblemDetail(
+      HttpStatus.NOT_FOUND,
+      "Catalog Resource Missing",
+      exception.getMessage()
+    );
+  }
+
+  @ExceptionHandler(CatalogConflictException.class)
+  public ProblemDetail handleCatalogConflict(CatalogConflictException exception, HttpServletRequest request) {
+    log.warn("Catalog state conflict on path {}: {}", request.getRequestURI(), exception.getMessage());
 
     return buildProblemDetail(
       HttpStatus.CONFLICT,
-      "Book Unavailable",
+      "Catalog State Conflict",
+      exception.getMessage()
+    );
+  }
+
+  @ExceptionHandler(CatalogBadRequestException.class)
+  public ProblemDetail handleCatalogBadRequest(CatalogBadRequestException exception, HttpServletRequest request) {
+    log.warn("Invalid catalog request on path {}: {}", request.getRequestURI(), exception.getMessage());
+
+    return buildProblemDetail(
+      HttpStatus.BAD_REQUEST,
+      "Invalid Catalog Request",
       exception.getMessage()
     );
   }

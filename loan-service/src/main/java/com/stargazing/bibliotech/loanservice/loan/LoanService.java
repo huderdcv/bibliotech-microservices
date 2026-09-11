@@ -7,4 +7,6 @@ public interface LoanService {
 
   LoanResponse borrowBook(BorrowBookRequest request);
 
+  LoanResponse returnBook(Long loanId);
+
 }

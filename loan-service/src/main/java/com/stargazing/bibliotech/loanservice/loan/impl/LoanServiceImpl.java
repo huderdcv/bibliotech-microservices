@@ -1,8 +1,9 @@
 package com.stargazing.bibliotech.loanservice.loan.impl;
 
 import com.stargazing.bibliotech.loanservice.client.catalog.CatalogClient;
-import com.stargazing.bibliotech.loanservice.common.exception.BookUnavailableException;
-import com.stargazing.bibliotech.loanservice.common.exception.ServiceUnavailableException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.CatalogClientException;
+import com.stargazing.bibliotech.loanservice.common.exception.ResourceNotFoundException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.ServiceUnavailableException;
 import com.stargazing.bibliotech.loanservice.loan.Loan;
 import com.stargazing.bibliotech.loanservice.loan.LoanRepository;
 import com.stargazing.bibliotech.loanservice.loan.LoanService;
@@ -53,7 +54,7 @@ public class LoanServiceImpl implements LoanService {
       // Note: An ErrorDecoder handles infrastructure errors inside CatalogClient
       catalogClient.reserveOne(request.bookIsbn());
 
-    } catch (BookUnavailableException e) {
+    } catch (CatalogClientException e) {
       // 3a. Handle domain rejection gracefully
       log.warn("Book ISBN: {} is unavailable. Marking loan as FAILED.", request.bookIsbn());
       savedLoan.setStatus(LoanStatus.FAILED);
@@ -74,6 +75,41 @@ public class LoanServiceImpl implements LoanService {
 
     log.info("Successfully activated loan record with ID: {}", savedLoan.getId());
     return loanMapper.toResponse(savedLoan);
+  }
 
+  //-- RETURN A BOOK
+  @Override
+  public LoanResponse returnBook(Long loanId) {
+    log.debug("Initiating return process for loan ID: {}", loanId);
+
+    // 1. Validations
+    Loan loan = loanRepository.findById(loanId)
+      .orElseThrow(() -> new ResourceNotFoundException("This loan doesn't exist"));
+
+    if (loan.getStatus() == LoanStatus.RETURNED) {
+      throw new IllegalArgumentException("This loan has already been closed");
+    }
+
+    if (loan.getStatus() != LoanStatus.ACTIVE) {
+      throw new IllegalArgumentException("This loan is in conflict. Please contact the admin");
+    }
+
+    // 2. Synchronous inter-service call outside an open DB transaction
+    try {
+      catalogClient.returnOne(loan.getBookIsbn());
+    } catch (CatalogClientException e) {
+      // 3a. Catch ALL domain rejections from the Catalog Service dynamically
+      log.warn("Catalog rejected return for ISBN: {}. Reason: {}", loan.getBookIsbn(), e.getMessage());
+      throw e;
+
+    } catch (feign.FeignException e) {
+      // 3b. Handle unexpected infrastructure/network failures
+      throw new ServiceUnavailableException("The Catalog Service is currently unavailable. Please try again later.", e);
+    }
+
+    loan.setStatus(LoanStatus.RETURNED);
+    Loan savedLoan = loanRepository.save(loan);
+
+    return loanMapper.toResponse(savedLoan);
   }
 }

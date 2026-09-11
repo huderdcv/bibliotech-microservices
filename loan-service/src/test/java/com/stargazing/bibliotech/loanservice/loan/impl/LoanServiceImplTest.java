@@ -2,8 +2,11 @@ package com.stargazing.bibliotech.loanservice.loan.impl;
 
 import com.stargazing.bibliotech.loanservice.client.catalog.CatalogClient;
 import com.stargazing.bibliotech.loanservice.client.catalog.dto.BookResponse;
-import com.stargazing.bibliotech.loanservice.common.exception.BookUnavailableException;
-import com.stargazing.bibliotech.loanservice.common.exception.ServiceUnavailableException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.CatalogBadRequestException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.CatalogClientException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.CatalogConflictException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.ServiceUnavailableException;
+import com.stargazing.bibliotech.loanservice.common.exception.ResourceNotFoundException;
 import com.stargazing.bibliotech.loanservice.loan.Loan;
 import com.stargazing.bibliotech.loanservice.loan.LoanRepository;
 import com.stargazing.bibliotech.loanservice.loan.config.LoanProperties;
@@ -27,14 +30,14 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class LoanServiceImplTest {
@@ -158,7 +161,7 @@ class LoanServiceImplTest {
     class ErrorPaths {
 
       @Test
-      @DisplayName("Should mark loan as FAILED and bubble up BookUnavailableException when Catalog rejects")
+      @DisplayName("Should mark loan as FAILED and bubble up CatalogBadRequestException when Catalog rejects")
       void shouldFailAndThrowBookUnavailableExceptionWhenCatalogRejects() {
         // GIVEN
         String isbn = "978-0134685991";
@@ -169,12 +172,12 @@ class LoanServiceImplTest {
 
         given(loanRepository.save(any(Loan.class))).willReturn(pendingLoan);
 
-        BookUnavailableException expectedException = new BookUnavailableException("Out of stock");
+        CatalogBadRequestException expectedException = new CatalogBadRequestException("Out of stock");
         given(catalogClient.reserveOne(isbn)).willThrow(expectedException);
 
         // WHEN & THEN
         assertThatThrownBy(() -> loanService.borrowBook(request))
-          .isInstanceOf(BookUnavailableException.class)
+          .isInstanceOf(CatalogBadRequestException.class)
           .hasMessage("Out of stock");
 
         // Verify state machine transitions
@@ -219,6 +222,167 @@ class LoanServiceImplTest {
         assertThat(savedLoans.get(1).getStatus()).isEqualTo(LoanStatus.FAILED);  // Fallback save
 
         // Ensure mapper was never called
+        then(loanMapper).shouldHaveNoInteractions();
+      }
+    }
+  }
+
+  @Nested
+  @DisplayName("Method: returnBook()")
+  class ReturnBookTests {
+
+    @Nested
+    @DisplayName("Happy Paths (Success Scenarios)")
+    class HappyPaths {
+
+      @Test
+      @DisplayName("Should fetch ACTIVE loan, process return in catalog, and update status to RETURNED")
+      void shouldSuccessfullyReturnBookAndCloseLoan() {
+        // GIVEN
+        Long loanId = 1L;
+        String isbn = "978-0134685991";
+        String memberId = "user-12345";
+
+        Loan activeLoan = createMockLoan(loanId, isbn, memberId, LoanStatus.ACTIVE);
+        Loan returnedLoan = createMockLoan(loanId, isbn, memberId, LoanStatus.RETURNED);
+
+        BookResponse mockBookResponse = mock(BookResponse.class);
+        LoanResponse expectedResponse = createMockResponse(loanId, isbn, memberId, LoanStatus.RETURNED);
+
+        given(loanRepository.findById(loanId)).willReturn(Optional.of(activeLoan));
+        given(catalogClient.returnOne(isbn)).willReturn(mockBookResponse);
+        given(loanRepository.save(any(Loan.class))).willReturn(returnedLoan);
+        given(loanMapper.toResponse(returnedLoan)).willReturn(expectedResponse);
+
+        // WHEN
+        LoanResponse response = loanService.returnBook(loanId);
+
+        // THEN
+        assertThat(response).isNotNull();
+        assertThat(response.status()).isEqualTo(LoanStatus.RETURNED);
+
+        // Verify interactions and state mutation
+        ArgumentCaptor<Loan> loanCaptor = ArgumentCaptor.forClass(Loan.class);
+        then(loanRepository).should(times(1)).save(loanCaptor.capture());
+
+        // Ensure the entity passed to save() was mutated to RETURNED
+        assertThat(loanCaptor.getValue().getStatus()).isEqualTo(LoanStatus.RETURNED);
+
+        then(catalogClient).should(times(1)).returnOne(isbn);
+        then(loanMapper).should(times(1)).toResponse(returnedLoan);
+      }
+    }
+
+    @Nested
+    @DisplayName("Error Paths (Business Rule Validation Failures)")
+    class ErrorPaths {
+
+      @Test
+      @DisplayName("Should throw ResourceNotFoundException when loan ID does not exist")
+      void shouldThrowResourceNotFoundExceptionWhenLoanDoesNotExist() {
+        // GIVEN
+        Long loanId = 999L;
+        given(loanRepository.findById(loanId)).willReturn(Optional.empty());
+
+        // WHEN & THEN
+        assertThatThrownBy(() -> loanService.returnBook(loanId))
+          .isInstanceOf(ResourceNotFoundException.class)
+          .hasMessage("This loan doesn't exist");
+
+        // Verify fail-fast: Catalog and Mapper are never touched, nothing is saved
+        then(catalogClient).shouldHaveNoInteractions();
+        then(loanRepository).should(never()).save(any(Loan.class));
+        then(loanMapper).shouldHaveNoInteractions();
+      }
+
+      @Test
+      @DisplayName("Should throw IllegalArgumentException when loan is already RETURNED (Idempotency)")
+      void shouldThrowIllegalArgumentExceptionWhenLoanAlreadyReturned() {
+        // GIVEN
+        Long loanId = 1L;
+        Loan returnedLoan = createMockLoan(loanId, "978-0134685991", "user-12345", LoanStatus.RETURNED);
+
+        given(loanRepository.findById(loanId)).willReturn(Optional.of(returnedLoan));
+
+        // WHEN & THEN
+        assertThatThrownBy(() -> loanService.returnBook(loanId))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("This loan has already been closed");
+
+        // Verify fail-fast to prevent artificial inventory inflation
+        then(catalogClient).shouldHaveNoInteractions();
+        then(loanRepository).should(never()).save(any(Loan.class));
+      }
+
+      @Test
+      @DisplayName("Should throw IllegalArgumentException when loan is PENDING or FAILED")
+      void shouldThrowIllegalArgumentExceptionWhenLoanIsInConflictState() {
+        // GIVEN
+        Long loanId = 1L;
+        // Simulating a loan stuck in PENDING
+        Loan pendingLoan = createMockLoan(loanId, "978-0134685991", "user-12345", LoanStatus.PENDING);
+
+        given(loanRepository.findById(loanId)).willReturn(Optional.of(pendingLoan));
+
+        // WHEN & THEN
+        assertThatThrownBy(() -> loanService.returnBook(loanId))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("This loan is in conflict. Please contact the admin");
+
+        then(catalogClient).shouldHaveNoInteractions();
+        then(loanRepository).should(never()).save(any(Loan.class));
+      }
+    }
+
+    @Nested
+    @DisplayName("Integration Failures (Transaction Safety)")
+    class IntegrationFailures {
+
+      @Test
+      @DisplayName("Should bubble up CatalogClientException and NOT save when Catalog rejects return")
+      void shouldBubbleUpDomainExceptionAndNotSaveWhenCatalogRejects() {
+        // GIVEN
+        Long loanId = 1L;
+        String isbn = "978-0134685991";
+        Loan activeLoan = createMockLoan(loanId, isbn, "user-12345", LoanStatus.ACTIVE);
+
+        given(loanRepository.findById(loanId)).willReturn(Optional.of(activeLoan));
+
+        // Simulating the Catalog Service returning a 409 Conflict
+        CatalogConflictException expectedException = new CatalogConflictException("Inventory capacity exceeded");
+        given(catalogClient.returnOne(isbn)).willThrow(expectedException);
+
+        // WHEN & THEN
+        assertThatThrownBy(() -> loanService.returnBook(loanId))
+          .isInstanceOf(CatalogClientException.class)
+          .hasMessage("Inventory capacity exceeded");
+
+        // Crucial Transaction Safety check: Ensure the local DB was never mutated/saved
+        then(loanRepository).should(never()).save(any(Loan.class));
+        then(loanMapper).shouldHaveNoInteractions();
+      }
+
+      @Test
+      @DisplayName("Should throw ServiceUnavailableException and NOT save when infrastructure fails")
+      void shouldThrowServiceUnavailableExceptionAndNotSaveWhenNetworkFails() {
+        // GIVEN
+        Long loanId = 1L;
+        String isbn = "978-0134685991";
+        Loan activeLoan = createMockLoan(loanId, isbn, "user-12345", LoanStatus.ACTIVE);
+
+        given(loanRepository.findById(loanId)).willReturn(java.util.Optional.of(activeLoan));
+
+        // Simulating a Feign Exception (e.g. 500 Internal Server Error or Connection Timeout)
+        FeignException feignException = mock(FeignException.class);
+        given(catalogClient.returnOne(isbn)).willThrow(feignException);
+
+        // WHEN & THEN
+        assertThatThrownBy(() -> loanService.returnBook(loanId))
+          .isInstanceOf(ServiceUnavailableException.class)
+          .hasMessageContaining("The Catalog Service is currently unavailable");
+
+        // Crucial Transaction Safety check: Ensure the local DB was never mutated/saved
+        then(loanRepository).should(never()).save(any(Loan.class));
         then(loanMapper).shouldHaveNoInteractions();
       }
     }
