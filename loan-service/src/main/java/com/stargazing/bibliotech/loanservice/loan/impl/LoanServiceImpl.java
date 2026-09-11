@@ -14,10 +14,14 @@ import com.stargazing.bibliotech.loanservice.loan.enums.LoanStatus;
 import com.stargazing.bibliotech.loanservice.loan.mapper.LoanMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -111,5 +115,20 @@ public class LoanServiceImpl implements LoanService {
     Loan savedLoan = loanRepository.save(loan);
 
     return loanMapper.toResponse(savedLoan);
+  }
+
+  //-- FIND ALL LOANS BY MEMBER ID
+  @Override
+  @Transactional(readOnly = true)
+  public Page<LoanResponse> findAllLoansByMemberId(String memberId, Pageable pageable) {
+    log.debug("Fetching loan history for member ID: {}. Page: {}, Size: {}",
+      memberId, pageable.getPageNumber(), pageable.getPageSize());
+
+    Set<LoanStatus> loanStatuses = Set.of(LoanStatus.ACTIVE, LoanStatus.RETURNED, LoanStatus.OVERDUE);
+    Page<Loan> pageLoans = loanRepository.findAllByMemberIdAndStatusIn(memberId, loanStatuses, pageable);
+
+    log.info("Successfully retrieved {} loan records for member ID: {}",
+      pageLoans.getTotalElements(), memberId);
+    return pageLoans.map(loanMapper::toResponse);
   }
 }
