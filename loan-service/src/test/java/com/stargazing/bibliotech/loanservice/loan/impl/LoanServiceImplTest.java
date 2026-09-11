@@ -24,13 +24,19 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -383,6 +389,121 @@ class LoanServiceImplTest {
 
         // Crucial Transaction Safety check: Ensure the local DB was never mutated/saved
         then(loanRepository).should(never()).save(any(Loan.class));
+        then(loanMapper).shouldHaveNoInteractions();
+      }
+    }
+  }
+
+  @Nested
+  @DisplayName("Method: findAllLoansByMemberId()")
+  class FindAllLoansByMemberIdTests {
+
+    @Nested
+    @DisplayName("Happy Paths (Success Scenarios)")
+    class HappyPaths {
+
+      @Test
+      @DisplayName("Should return populated page of loans and verify exact status filtering")
+      @SuppressWarnings("unchecked")
+      void shouldReturnPopulatedPageAndVerifyStatusSet() {
+        // GIVEN
+        String memberId = "user-12345";
+        Pageable pageable = PageRequest.of(0, 10);
+
+        Loan activeLoan = createMockLoan(1L, "978-0134685991", memberId, LoanStatus.ACTIVE);
+        LoanResponse expectedResponse = createMockResponse(1L, "978-0134685991", memberId, LoanStatus.ACTIVE);
+
+        Page<Loan> mockPage = new PageImpl<>(List.of(activeLoan), pageable, 1);
+
+        given(loanRepository.findAllByMemberIdAndStatusIn(
+          eq(memberId),
+          any(Set.class),
+          eq(pageable)
+        )).willReturn(mockPage);
+
+        given(loanMapper.toResponse(activeLoan)).willReturn(expectedResponse);
+
+        // WHEN
+        Page<LoanResponse> result = loanService.findAllLoansByMemberId(memberId, pageable);
+
+        // THEN
+        assertThat(result).isNotNull();
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).status()).isEqualTo(LoanStatus.ACTIVE);
+        assertThat(result.getTotalElements()).isEqualTo(1);
+
+        // Verify the repository was called with the exact expected Set of statuses
+        ArgumentCaptor<Set<LoanStatus>> statusesCaptor = ArgumentCaptor.forClass(Set.class);
+        then(loanRepository).should(times(1)).findAllByMemberIdAndStatusIn(
+          eq(memberId),
+          statusesCaptor.capture(),
+          eq(pageable)
+        );
+
+        assertThat(statusesCaptor.getValue()).containsExactlyInAnyOrder(
+          LoanStatus.ACTIVE,
+          LoanStatus.RETURNED,
+          LoanStatus.OVERDUE
+        );
+
+        // Verify mapper was called exactly once per entity
+        then(loanMapper).should(times(1)).toResponse(activeLoan);
+      }
+
+      @Test
+      @DisplayName("Should gracefully return empty page when member has no history")
+      void shouldReturnEmptyPageWhenNoHistoryExists() {
+        // GIVEN
+        String memberId = "user-99999";
+        Pageable pageable = PageRequest.of(0, 10);
+
+        Page<Loan> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+        given(loanRepository.findAllByMemberIdAndStatusIn(
+          eq(memberId),
+          any(Set.class),
+          eq(pageable)
+        )).willReturn(emptyPage);
+
+        // WHEN
+        Page<LoanResponse> result = loanService.findAllLoansByMemberId(memberId, pageable);
+
+        // THEN
+        assertThat(result).isNotNull();
+        assertThat(result.getContent()).isEmpty();
+        assertThat(result.getTotalElements()).isZero();
+
+        // Verify the mapper was NEVER invoked since there was no data to map
+        then(loanMapper).shouldHaveNoInteractions();
+      }
+    }
+
+    @Nested
+    @DisplayName("Error Paths (Integration Failures)")
+    class ErrorPaths {
+
+      @Test
+      @DisplayName("Should bubble up DataAccessException when database fails")
+      void shouldBubbleUpExceptionWhenDatabaseFails() {
+        // GIVEN
+        String memberId = "user-12345";
+        Pageable pageable = PageRequest.of(0, 10);
+
+        // Simulating a database timeout or connection failure
+        RuntimeException dbException = new RuntimeException("Database connection timeout");
+
+        given(loanRepository.findAllByMemberIdAndStatusIn(
+          eq(memberId),
+          any(Set.class),
+          eq(pageable)
+        )).willThrow(dbException);
+
+        // WHEN & THEN
+        assertThatThrownBy(() -> loanService.findAllLoansByMemberId(memberId, pageable))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("Database connection timeout");
+
+        // Verify mapper was never touched
         then(loanMapper).shouldHaveNoInteractions();
       }
     }

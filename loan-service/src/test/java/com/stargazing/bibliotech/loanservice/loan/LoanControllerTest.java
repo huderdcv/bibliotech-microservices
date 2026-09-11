@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -41,7 +42,7 @@ class LoanControllerTest {
   private LoanService loanService;
 
   @MockitoBean
-  private java.time.Clock clock;
+  private Clock clock;
 
   private static final String BASE_URL = "/api/v1/loans";
 
