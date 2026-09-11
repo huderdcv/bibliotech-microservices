@@ -1,7 +1,9 @@
 package com.stargazing.bibliotech.loanservice.client.catalog;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.stargazing.bibliotech.loanservice.common.exception.BookUnavailableException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.CatalogBadRequestException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.CatalogConflictException;
+import com.stargazing.bibliotech.loanservice.client.catalog.exception.CatalogNotFoundException;
 import feign.Response;
 import feign.codec.ErrorDecoder;
 import lombok.RequiredArgsConstructor;
@@ -26,14 +28,15 @@ public class CatalogFeignErrorDecoder implements ErrorDecoder {
       
       // 2. Parse the JSON from catalog's GlobalExceptionHandler into a ProblemDetail object
       ProblemDetail problem = objectMapper.readValue(bodyIs, ProblemDetail.class);
+      String detailMessage = problem.getDetail() != null ? problem.getDetail() : "Unknown Catalog Error";
 
       log.warn("Catalog returned error: Title='{}', Detail='{}'", problem.getTitle(), problem.getDetail());
 
       // 3. Translate specific Catalog errors into Loan Service domain exceptions
       return switch (response.status()) {
-        case 404 -> new BookUnavailableException("Catalog rejected: " + problem.getDetail());
-        case 409 -> new BookUnavailableException("Catalog conflict: " + problem.getDetail());
-        case 400 -> new BookUnavailableException("Invalid Catalog request: " + problem.getDetail());
+        case 404 -> new CatalogNotFoundException("Catalog rejected: " + detailMessage);
+        case 409 -> new CatalogConflictException("Catalog conflict: " + detailMessage);
+        case 400 -> new CatalogBadRequestException("Invalid Catalog request: " + detailMessage);
         default -> defaultErrorDecoder.decode(methodKey, response);
       };
     } catch (Exception e) {
